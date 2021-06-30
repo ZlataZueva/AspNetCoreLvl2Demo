@@ -1,0 +1,8 @@
+﻿
+@{
+    ViewData["Title"] = "Music";
+}
+
+<h1>Music</h1>
+
+<h3>User's favorite musician is @User.Claims.First(c => c.Type == "FavoriteMusician").Value</h3>
