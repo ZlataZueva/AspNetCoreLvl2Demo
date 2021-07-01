@@ -45,8 +45,21 @@ namespace ASPNETCoreLvl2Demo
                 .AddDefaultTokenProviders();
             services.Configure<DataProtectionTokenProviderOptions>(o =>
                 o.TokenLifespan = TimeSpan.FromHours(3));
+            services.Configure<SecurityStampValidatorOptions>(o =>
+            {
+                o.ValidationInterval = TimeSpan.FromSeconds(30);
+            });
             services.AddAuthentication(IdentityConstants.ApplicationScheme)
-                .AddCookie(IdentityConstants.ApplicationScheme, o => o.LoginPath = "/Account/Login");
+                .AddCookie(IdentityConstants.ApplicationScheme, o =>
+                {
+                    o.LoginPath = "/Account/Login";
+                    o.Events.OnValidatePrincipal = SecurityStampValidator.ValidatePrincipalAsync;
+                })
+                .AddCookie(IdentityConstants.ExternalScheme)
+                .AddCookie(IdentityConstants.TwoFactorUserIdScheme, o =>
+                {
+                    o.Events.OnValidatePrincipal = SecurityStampValidator.ValidateAsync<ITwoFactorSecurityStampValidator>;
+                });
 
             services.AddAuthorization(o =>
             {
