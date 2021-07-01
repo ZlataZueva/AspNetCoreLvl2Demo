@@ -1,9 +1,11 @@
+using System;
 using System.IO;
 using ASPNETCoreLvl2Demo.HealthChecks;
 using ASPNETCoreLvl2Demo.Identity;
 using ASPNETCoreLvl2Demo.Middlewares;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Authorization.Infrastructure;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.Hosting;
@@ -29,21 +31,36 @@ namespace ASPNETCoreLvl2Demo
         {
             services.AddControllersWithViews();
 
-            services.AddIdentityCore<CustomUser>();
-            services.AddSingleton<IUserStore<CustomUser>, CustomUserStore>();
-            services.AddSingleton<IAuthorizationHandler, VaccinationRequirementHandler>();
-            services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
-                .AddCookie(CookieAuthenticationDefaults.AuthenticationScheme, o => o.LoginPath = "/Account/Login");
+            services.AddIdentityCore<CustomUser>(o =>
+                {
+                    o.Password.RequireDigit = false;
+                    o.Password.RequireLowercase = true;
+                    o.Password.RequireNonAlphanumeric = false;
+                    o.Password.RequireUppercase = false;
+                    o.Password.RequiredLength = 5;
+                })
+                .AddUserStore<CustomUserStore>()
+                .AddSignInManager<SignInManager<CustomUser>>()
+                .AddClaimsPrincipalFactory<CustomClaimsPrincipalFactory>()
+                .AddDefaultTokenProviders();
+            services.Configure<DataProtectionTokenProviderOptions>(o =>
+                o.TokenLifespan = TimeSpan.FromHours(3));
+            services.AddAuthentication(IdentityConstants.ApplicationScheme)
+                .AddCookie(IdentityConstants.ApplicationScheme, o => o.LoginPath = "/Account/Login");
 
             services.AddAuthorization(o =>
             {
-                o.AddPolicy("HasFavoriteMusician", p =>
-                    p.RequireClaim("FavoriteMusician"));
-                o.AddPolicy("IsVaccinated", p => p.Requirements.Add(new VaccinationRequirement("Sputnik-V")));
+                var musicianPolicy = new AuthorizationPolicyBuilder().RequireClaim("FavoriteMusician").Build();
+                var vaccinatedPolicy = new AuthorizationPolicyBuilder().AddRequirements(new VaccinationRequirement("Sputnik-V")).Build();
+                o.AddPolicy("HasFavoriteMusician", musicianPolicy);
+                o.AddPolicy("IsVaccinated", vaccinatedPolicy);
+                o.AddPolicy("CombinedPolicy", AuthorizationPolicy.Combine(musicianPolicy, vaccinatedPolicy));
                 o.FallbackPolicy = new AuthorizationPolicyBuilder()
                     .RequireAuthenticatedUser()
                     .Build();
             });
+            services.AddSingleton<IAuthorizationHandler, VaccinationRequirementHandler>();
+
 
             services.AddDirectoryBrowser();
 

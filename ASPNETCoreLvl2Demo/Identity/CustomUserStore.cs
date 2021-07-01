@@ -8,7 +8,7 @@ using Newtonsoft.Json;
 
 namespace ASPNETCoreLvl2Demo.Identity
 {
-    public class CustomUserStore : IUserPasswordStore<CustomUser>
+    public class CustomUserStore : IUserPasswordStore<CustomUser>, IUserSecurityStampStore<CustomUser>
     {
         private readonly IList<CustomUser> _users;
         private const string UsersFilePath = "users.json";
@@ -96,6 +96,18 @@ namespace ASPNETCoreLvl2Demo.Identity
         public Task SetPasswordHashAsync(CustomUser user, string passwordHash, CancellationToken cancellationToken)
         {
             user.PasswordHash = passwordHash;
+
+            return Task.CompletedTask;
+        }
+
+        public Task<string> GetSecurityStampAsync(CustomUser user, CancellationToken cancellationToken)
+        {
+            return Task.FromResult(user.SecurityStamp);
+        }
+
+        public Task SetSecurityStampAsync(CustomUser user, string stamp, CancellationToken cancellationToken)
+        {
+            user.SecurityStamp = stamp;
 
             return Task.CompletedTask;
         }

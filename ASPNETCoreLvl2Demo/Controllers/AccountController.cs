@@ -1,23 +1,24 @@
 ﻿using System;
-using System.Security.Claims;
 using System.Threading.Tasks;
 using ASPNETCoreLvl2Demo.Identity;
 using ASPNETCoreLvl2Demo.Models;
 using Microsoft.AspNetCore.Authentication;
-using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 
 namespace ASPNETCoreLvl2Demo.Controllers
 {
+    [AutoValidateAntiforgeryToken]
     public class AccountController : Controller
     {
         private readonly UserManager<CustomUser> _userManager;
+        private readonly SignInManager<CustomUser> _signInManager;
 
-        public AccountController(UserManager<CustomUser> userManager)
+        public AccountController(UserManager<CustomUser> userManager, SignInManager<CustomUser> signInManager)
         {
             _userManager = userManager;
+            _signInManager = signInManager;
         }
 
         [HttpPost]
@@ -26,24 +27,22 @@ namespace ASPNETCoreLvl2Demo.Controllers
         {
             if (ModelState.IsValid)
             {
-                var user = await _userManager.FindByNameAsync(model.Name);
-                if (user == null)
+
+                var user = new CustomUser
                 {
-                    user = new CustomUser
-                    {
-                        Id = Guid.NewGuid().ToString(),
-                        UserName = model.Name,
-                        FavoriteMusician = model.FavoriteMusician
-                    };
+                    Id = Guid.NewGuid().ToString(),
+                    UserName = model.Name,
+                    FavoriteMusician = model.FavoriteMusician
+                };
 
-                    var result = await _userManager.CreateAsync(user, model.Password);
+                var result = await _userManager.CreateAsync(user, model.Password);
 
-                    return result.Succeeded ? View("Success") : View();
+                foreach (var error in result.Errors)
+                {
+                    ModelState.AddModelError("", error.Description);
                 }
 
-                ModelState.AddModelError("", "Registration failed");
-
-                return View();
+                return result.Succeeded ? View("Success") : View();
             }
 
             return View();
@@ -56,24 +55,77 @@ namespace ASPNETCoreLvl2Demo.Controllers
             return View();
         }
 
+        [HttpGet]
+        [AllowAnonymous]
+        public IActionResult ForgotPassword()
+        {
+            return View();
+        }
+
+        [HttpPost]
+        [AllowAnonymous]
+        public async Task<IActionResult> ForgotPassword(ForgotPasswordModel model)
+        {
+            if (ModelState.IsValid)
+            {
+                var user = await _userManager.FindByNameAsync(model.Name);
+                if (user != null)
+                {
+                    var token = await _userManager.GeneratePasswordResetTokenAsync(user);
+                    var resetLink = Url.Action(nameof(ResetPassword), "Account",
+                        new { token, name = user.UserName }, Request.Scheme);
+
+                    await System.IO.File.WriteAllTextAsync("resetLink.txt", resetLink);
+                }
+                else
+                {
+                    ModelState.AddModelError("", "User with specified name not found");
+                }
+            }
+            return View();
+        }
+
+
+        [HttpGet]
+        [AllowAnonymous]
+        public IActionResult ResetPassword(string token, string name)
+        {
+            var model = new ResetPasswordModel { Token = token, Name = name };
+            return View(model);
+        }
+
+        [HttpPost]
+        [AllowAnonymous]
+        public async Task<IActionResult> ResetPassword(ResetPasswordModel model)
+        {
+            if (ModelState.IsValid)
+            {
+                var user = await _userManager.FindByNameAsync(model.Name);
+                if (user != null)
+                {
+                    var result = await _userManager.ResetPasswordAsync(user, model.Token, model.Password);
+
+                    foreach (var error in result.Errors)
+                    {
+                        ModelState.AddModelError("", error.Description);
+                    }
+
+                    return result.Succeeded ? View("Success") : View();
+                }
+                ModelState.AddModelError("", "Invalid request");
+            }
+            return View();
+        }
+
         [HttpPost]
         [AllowAnonymous]
         public async Task<IActionResult> Login(LoginModel model)
         {
             if (ModelState.IsValid)
             {
-                var user = await _userManager.FindByNameAsync(model.Name);
-                if (user != null && await _userManager.CheckPasswordAsync(user, model.Password))
+                var result = await _signInManager.PasswordSignInAsync(model.Name, model.Password, true, false);
+                if (result.Succeeded)
                 {
-                    var identity = new ClaimsIdentity(CookieAuthenticationDefaults.AuthenticationScheme);
-                    identity.AddClaim(new Claim(ClaimTypes.NameIdentifier, user.Id));
-                    identity.AddClaim(new Claim(ClaimTypes.Name, user.UserName));
-                    if (user.FavoriteMusician != null)
-                    {
-                        identity.AddClaim(new Claim("FavoriteMusician", user.FavoriteMusician));
-                    }
-                    await HttpContext.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, new ClaimsPrincipal(identity));
-
                     return RedirectToAction(nameof(Claims));
                 }
 
@@ -88,6 +140,13 @@ namespace ASPNETCoreLvl2Demo.Controllers
         public IActionResult Login()
         {
             return View();
+        }
+
+        public async Task<IActionResult> Logout()
+        {
+            await HttpContext.SignOutAsync(IdentityConstants.ApplicationScheme);
+
+            return RedirectToAction(nameof(Login));
         }
 
         [HttpGet]
